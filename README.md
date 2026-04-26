@@ -84,6 +84,6 @@ npm run build      # bundle to dist/index.js
 npm run type-check # tsc --noEmit
 ```
 
-## License
+## Status
 
-Private — personal use only.
+Built as a personal PR-review Action. Source is published for transparency and so the author's own consumer repos can use it via `uses: redpotatoe07/margins@v1`. No license is granted for reuse or redistribution; all rights reserved.
