@@ -43893,6 +43893,11 @@ ${params.diff}
 Return your findings as a JSON array now.`;
 }
 
+// src/filter.ts
+function filterByConfidence(findings, threshold) {
+  return findings.filter((f) => f.confidence >= threshold);
+}
+
 // src/index.ts
 async function run() {
   try {
@@ -43933,15 +43938,17 @@ async function run() {
       userMessage: buildUserMessage({ diff, prTitle, prBody })
     });
     info(`Anthropic returned ${findings.length} raw findings`);
+    const highConfidence = filterByConfidence(findings, config2.confidenceThreshold);
+    info(`After confidence filter (\u2265${config2.confidenceThreshold}): ${highConfidence.length} findings`);
     await postFindings({
       token: config2.githubToken,
       owner,
       repo,
       pullNumber,
       commitSha,
-      findings
+      findings: highConfidence
     });
-    setOutput("findings-count", String(findings.length));
+    setOutput("findings-count", String(highConfidence.length));
   } catch (err) {
     setFailed(err instanceof Error ? err.message : String(err));
   }

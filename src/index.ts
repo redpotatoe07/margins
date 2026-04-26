@@ -4,6 +4,7 @@ import { parseConfig } from './config';
 import { fetchPRDiff, postFindings } from './github';
 import { callReview } from './anthropic';
 import { buildSystemPrompt, buildUserMessage } from './prompt';
+import { filterByConfidence } from './filter';
 
 async function run(): Promise<void> {
   try {
@@ -51,16 +52,19 @@ async function run(): Promise<void> {
 
     core.info(`Anthropic returned ${findings.length} raw findings`);
 
+    const highConfidence = filterByConfidence(findings, config.confidenceThreshold);
+    core.info(`After confidence filter (≥${config.confidenceThreshold}): ${highConfidence.length} findings`);
+
     await postFindings({
       token: config.githubToken,
       owner,
       repo,
       pullNumber,
       commitSha,
-      findings,
+      findings: highConfidence,
     });
 
-    core.setOutput('findings-count', String(findings.length));
+    core.setOutput('findings-count', String(highConfidence.length));
   } catch (err) {
     core.setFailed(err instanceof Error ? err.message : String(err));
   }
