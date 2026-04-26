@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Self-hosted PR auto-reviewer using Anthropic API",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc && esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js",
     "test": "vitest run",
@@ -20,7 +23,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
+    "@types/node": "^20.0.0",
     "esbuild": "^0.28.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"
