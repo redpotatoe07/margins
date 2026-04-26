@@ -19988,6 +19988,9 @@ function setFailed(message) {
 function error(message, properties = {}) {
   issueCommand("error", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
+function warning(message, properties = {}) {
+  issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
 function info(message) {
   process.stdout.write(message + os4.EOL);
 }
@@ -43905,6 +43908,21 @@ function isAuthorAllowed(author, allowlist) {
   return allowlist.some((a) => a.toLowerCase() === lower);
 }
 
+// src/caps/token-cap.ts
+var CHARS_PER_TOKEN = 4;
+function estimateInputTokens(text) {
+  return Math.ceil(text.length / CHARS_PER_TOKEN);
+}
+function truncateDiff(diff, maxInputTokens) {
+  const maxChars = maxInputTokens * CHARS_PER_TOKEN;
+  if (diff.length <= maxChars) return diff;
+  const headroom = 100;
+  const truncated = diff.slice(0, maxChars - headroom);
+  return `${truncated}
+
+[truncated by margins \u2014 diff exceeded ${maxInputTokens}-token input cap]`;
+}
+
 // src/index.ts
 async function run() {
   try {
@@ -43943,12 +43961,23 @@ async function run() {
       repo,
       pullNumber
     });
+    const MAX_INPUT_TOKENS = config2.maxTokensPerPr * 2;
+    const inputTokens = estimateInputTokens(diff);
+    info(`Diff size: ~${inputTokens} estimated tokens (cap: ${MAX_INPUT_TOKENS})`);
+    const cappedDiff = truncateDiff(diff, MAX_INPUT_TOKENS);
+    if (cappedDiff !== diff) {
+      warning(`Diff truncated to fit input cap.`);
+    }
     const findings = await callReview({
       apiKey: config2.anthropicApiKey,
       model: config2.model,
       maxTokens: config2.maxTokensPerPr,
       systemPrompt: buildSystemPrompt(),
-      userMessage: buildUserMessage({ diff, prTitle, prBody })
+      userMessage: buildUserMessage({
+        diff: cappedDiff,
+        prTitle,
+        prBody
+      })
     });
     info(`Anthropic returned ${findings.length} raw findings`);
     const highConfidence = filterByConfidence(findings, config2.confidenceThreshold);

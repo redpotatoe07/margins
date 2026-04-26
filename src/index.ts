@@ -6,6 +6,7 @@ import { callReview } from './anthropic';
 import { buildSystemPrompt, buildUserMessage } from './prompt';
 import { filterByConfidence } from './filter';
 import { isAuthorAllowed } from './caps/author-allowlist';
+import { estimateInputTokens, truncateDiff } from './caps/token-cap';
 
 async function run(): Promise<void> {
   try {
@@ -50,12 +51,25 @@ async function run(): Promise<void> {
       pullNumber,
     });
 
+    const MAX_INPUT_TOKENS = config.maxTokensPerPr * 2; // input headroom is roughly 2x output cap
+    const inputTokens = estimateInputTokens(diff);
+    core.info(`Diff size: ~${inputTokens} estimated tokens (cap: ${MAX_INPUT_TOKENS})`);
+
+    const cappedDiff = truncateDiff(diff, MAX_INPUT_TOKENS);
+    if (cappedDiff !== diff) {
+      core.warning(`Diff truncated to fit input cap.`);
+    }
+
     const findings = await callReview({
       apiKey: config.anthropicApiKey,
       model: config.model,
       maxTokens: config.maxTokensPerPr,
       systemPrompt: buildSystemPrompt(),
-      userMessage: buildUserMessage({ diff, prTitle, prBody }),
+      userMessage: buildUserMessage({
+        diff: cappedDiff,
+        prTitle,
+        prBody,
+      }),
     });
 
     core.info(`Anthropic returned ${findings.length} raw findings`);
