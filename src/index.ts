@@ -1,5 +1,7 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
+import * as cache from '@actions/cache';
+import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { parseConfig } from './config';
 import { fetchPRDiff, postFindings } from './github';
 import { callReview } from './anthropic';
@@ -7,6 +9,30 @@ import { buildSystemPrompt, buildUserMessage } from './prompt';
 import { filterByConfidence } from './filter';
 import { isAuthorAllowed } from './caps/author-allowlist';
 import { estimateInputTokens, truncateDiff } from './caps/token-cap';
+import { currentMonthKey, checkAndIncrementQuota } from './caps/monthly-quota';
+
+async function quotaGet(key: string): Promise<string | null> {
+  const path = `/tmp/${key}`;
+  try {
+    await cache.restoreCache([path], key);
+    if (existsSync(path)) {
+      return readFileSync(path, 'utf-8');
+    }
+  } catch (err) {
+    core.warning(`Cache restore failed: ${err}`);
+  }
+  return null;
+}
+
+async function quotaSet(key: string, value: string): Promise<void> {
+  const path = `/tmp/${key}`;
+  writeFileSync(path, value);
+  try {
+    await cache.saveCache([path], key);
+  } catch (err) {
+    core.warning(`Cache save failed: ${err}`);
+  }
+}
 
 async function run(): Promise<void> {
   try {
@@ -41,6 +67,23 @@ async function run(): Promise<void> {
       );
       return;
     }
+
+    const monthKey = currentMonthKey();
+    const cacheKey = `margins-quota-${monthKey}`;
+    const quota = await checkAndIncrementQuota({
+      monthKey,
+      limit: config.monthlyQuota,
+      get: () => quotaGet(cacheKey),
+      set: (v) => quotaSet(cacheKey, v),
+    });
+
+    if (!quota.allowed) {
+      core.warning(
+        `Monthly quota exceeded for ${monthKey} (${quota.used}/${quota.limit}). Skipping review.`
+      );
+      return;
+    }
+    core.info(`Quota: ${quota.used}/${quota.limit} for ${monthKey}`);
 
     core.info(`Reviewing PR #${pullNumber} by ${author}`);
 
