@@ -5,6 +5,7 @@ import { fetchPRDiff, postFindings } from './github';
 import { callReview } from './anthropic';
 import { buildSystemPrompt, buildUserMessage } from './prompt';
 import { filterByConfidence } from './filter';
+import { isAuthorAllowed } from './caps/author-allowlist';
 
 async function run(): Promise<void> {
   try {
@@ -32,6 +33,13 @@ async function run(): Promise<void> {
     const author = pr.user.login;
     const prTitle = pr.title ?? '';
     const prBody = pr.body ?? '';
+
+    if (!isAuthorAllowed(author, config.allowedAuthors)) {
+      core.info(
+        `Author "${author}" not in allowlist (${config.allowedAuthors.join(', ') || 'empty'}); skipping review.`
+      );
+      return;
+    }
 
     core.info(`Reviewing PR #${pullNumber} by ${author}`);
 

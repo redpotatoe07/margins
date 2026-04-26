@@ -43898,6 +43898,13 @@ function filterByConfidence(findings, threshold) {
   return findings.filter((f) => f.confidence >= threshold);
 }
 
+// src/caps/author-allowlist.ts
+function isAuthorAllowed(author, allowlist) {
+  if (allowlist.length === 0) return true;
+  const lower = author.toLowerCase();
+  return allowlist.some((a) => a.toLowerCase() === lower);
+}
+
 // src/index.ts
 async function run() {
   try {
@@ -43923,6 +43930,12 @@ async function run() {
     const author = pr.user.login;
     const prTitle = pr.title ?? "";
     const prBody = pr.body ?? "";
+    if (!isAuthorAllowed(author, config2.allowedAuthors)) {
+      info(
+        `Author "${author}" not in allowlist (${config2.allowedAuthors.join(", ") || "empty"}); skipping review.`
+      );
+      return;
+    }
     info(`Reviewing PR #${pullNumber} by ${author}`);
     const diff = await fetchPRDiff({
       token: config2.githubToken,
