@@ -27,6 +27,7 @@ jobs:
       - uses: redpotatoe07/margins@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: 'claude-sonnet-4-6'
           allowed-authors: redpotatoe07
           confidence-threshold: '0.7'
           max-tokens-per-pr: '8000'
