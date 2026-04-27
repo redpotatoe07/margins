@@ -5,6 +5,7 @@ const mockOctokit = {
   pulls: {
     get: vi.fn(),
     createReview: vi.fn(),
+    createReviewComment: vi.fn(),
   },
   repos: {
     getContent: vi.fn(),
@@ -94,6 +95,78 @@ describe('postFindings', () => {
     });
 
     expect(mockOctokit.pulls.createReview).not.toHaveBeenCalled();
+  });
+
+  it('falls back to per-comment posting when createReview fails (e.g. invalid line on one comment)', async () => {
+    mockOctokit.pulls.createReview.mockReset();
+    mockOctokit.pulls.createReviewComment.mockReset();
+
+    const err = new Error('Unprocessable Entity: "Line could not be resolved"') as Error & { status: number };
+    err.status = 422;
+    mockOctokit.pulls.createReview.mockRejectedValueOnce(err);
+
+    mockOctokit.pulls.createReviewComment
+      .mockResolvedValueOnce({ data: { id: 1 } })
+      .mockResolvedValueOnce({ data: { id: 2 } });
+
+    await postFindings({
+      token: 't',
+      owner: 'redpotatoe07',
+      repo: 'speakr',
+      pullNumber: 1,
+      commitSha: 'abc123',
+      findings: [
+        {
+          file_path: 'src/a.ts',
+          line: 5,
+          severity: 'warning',
+          category: 'correctness',
+          message: 'finding 1',
+          confidence: 0.85,
+        },
+        {
+          file_path: 'src/b.ts',
+          line: 10,
+          severity: 'info',
+          category: 'docs',
+          message: 'finding 2',
+          confidence: 0.9,
+        },
+      ],
+    });
+
+    expect(mockOctokit.pulls.createReviewComment).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps posting good comments when one per-comment call fails in fallback', async () => {
+    mockOctokit.pulls.createReview.mockReset();
+    mockOctokit.pulls.createReviewComment.mockReset();
+
+    const err = new Error('Unprocessable Entity') as Error & { status: number };
+    err.status = 422;
+    mockOctokit.pulls.createReview.mockRejectedValueOnce(err);
+
+    const lineErr = new Error('Line could not be resolved') as Error & { status: number };
+    lineErr.status = 422;
+    mockOctokit.pulls.createReviewComment
+      .mockResolvedValueOnce({ data: { id: 1 } })
+      .mockRejectedValueOnce(lineErr)
+      .mockResolvedValueOnce({ data: { id: 3 } });
+
+    await postFindings({
+      token: 't',
+      owner: 'redpotatoe07',
+      repo: 'speakr',
+      pullNumber: 1,
+      commitSha: 'abc123',
+      findings: [
+        { file_path: 'a.ts', line: 1, severity: 'warning', category: 'correctness', message: 'm1', confidence: 0.8 },
+        { file_path: 'b.ts', line: 999, severity: 'warning', category: 'correctness', message: 'm2', confidence: 0.8 },
+        { file_path: 'c.ts', line: 3, severity: 'warning', category: 'correctness', message: 'm3', confidence: 0.8 },
+      ],
+    });
+
+    expect(mockOctokit.pulls.createReviewComment).toHaveBeenCalledTimes(3);
   });
 });
 

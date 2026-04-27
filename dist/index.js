@@ -68646,7 +68646,7 @@ var SEVERITY_EMOJI = {
 };
 async function postFindings(params) {
   if (params.findings.length === 0) {
-    console.log("No findings to post.");
+    info("No findings to post.");
     return;
   }
   const octokit = new Octokit2({ auth: params.token });
@@ -68666,15 +68666,46 @@ ${f.suggested_fix}
       body: body2
     };
   });
-  await octokit.pulls.createReview({
-    owner: params.owner,
-    repo: params.repo,
-    pull_number: params.pullNumber,
-    commit_id: params.commitSha,
-    event: "COMMENT",
-    body: `Margins reviewed this PR and found ${params.findings.length} item${params.findings.length === 1 ? "" : "s"}.`,
-    comments
-  });
+  try {
+    await octokit.pulls.createReview({
+      owner: params.owner,
+      repo: params.repo,
+      pull_number: params.pullNumber,
+      commit_id: params.commitSha,
+      event: "COMMENT",
+      body: `Margins reviewed this PR and found ${params.findings.length} item${params.findings.length === 1 ? "" : "s"}.`,
+      comments
+    });
+    return;
+  } catch (err) {
+    warning(
+      `createReview failed (${err instanceof Error ? err.message : String(err)}); falling back to per-comment posting so good comments still land.`
+    );
+  }
+  let succeeded = 0;
+  let failed = 0;
+  for (const c of comments) {
+    try {
+      await octokit.pulls.createReviewComment({
+        owner: params.owner,
+        repo: params.repo,
+        pull_number: params.pullNumber,
+        commit_id: params.commitSha,
+        body: c.body,
+        path: c.path,
+        line: c.line
+      });
+      succeeded++;
+    } catch (err) {
+      failed++;
+      warning(
+        `Failed to post comment on ${c.path}:${c.line}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+  info(
+    `Per-comment fallback posted ${succeeded}/${comments.length} (${failed} dropped)`
+  );
 }
 
 // node_modules/@anthropic-ai/sdk/internal/tslib.mjs
