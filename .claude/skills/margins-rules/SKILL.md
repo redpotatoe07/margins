@@ -1,6 +1,6 @@
 ---
 name: margins-rules
-description: Use when onboarding a repo to Margins (the PR auto-reviewer Action). Inspects the repo, asks 3-5 targeted questions, drafts and writes a per-repo .margins.md rules file.
+description: Use when onboarding a repo to Margins (the PR auto-reviewer Action). Inspects the repo and the user's feedback memory, infers everything needed, then writes a per-repo .margins.md without asking the user questions.
 ---
 
 # Margins: Onboard a Repo to Per-Repo Rules
@@ -27,33 +27,41 @@ Read these files (skip silently if absent):
 - `package.json` / `pyproject.toml` / `go.mod` / `Cargo.toml` / `Gemfile`
 - `tsconfig.json` / `.eslintrc*` / similar linter configs
 - `README.md`
+- `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` — strongest signal when present, treat as the primary source for repo conventions
 - Top-level folder layout (one level deep)
 - 2–3 representative source files from the largest source directory
 
-Note the stack, conventions, and patterns that look like project-specific rules.
+Also read the user's feedback memory if accessible. Open `~/.claude/projects/<project-key>/memory/MEMORY.md` (the index) and any linked feedback-type entries. Identify feedback that's about code-level conventions — anti-patterns to avoid, scope discipline, things the user has corrected before. These are inputs to the rules file, not topics to ask about.
+
+Note the stack, conventions, and patterns that should become rules.
 
 ### 2. Check for existing `.margins.md`
 
-If one exists, read it, summarize what's already there to the user, and ask: "Extend, replace, or revise specific sections?"
+If one exists, read it. Treat its contents as a baseline to extend, not a source of truth to preserve verbatim. The new draft (step 3) should subsume the existing rules plus any new ones derived from inspection.
 
 If absent, proceed to step 3.
 
-### 3. Ask 3–5 targeted questions
+### 3. Draft directly from inspection
 
-Tailor questions to what you saw in step 1. Do not use a generic checklist.
+Do not ask the user questions. Infer everything from what you read in step 1.
 
-Examples:
-- "I see this is a [stack]. Any [stack]-specific patterns to flag or allow?"
-- "Any directories Margins should not review (tests, scripts, generated)?"
-- "Is there a style guide or convention doc I should mirror?"
-- "What's been a recurring source of bugs or PR pushback here?"
-- "Anything about your team's conventions that isn't obvious from the code?"
+**Strongest signal: `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` if present.** Translate directly:
+- Any "must", "always", "never", "don't", or "should not" pattern → candidate `Always flag` rule.
+- Any "gotcha", "drift", "watch out for", or "common mistake" section → encoded directly as `Always flag` rules with specific paths/symbols named.
+- Any "auto-generated" / "don't hand-edit" file mentions → `Always flag` rule plus `Ignore entirely` line.
+- Stated stack and architectural invariants → the `Stack` and `Architectural notes` sections.
 
-Cap at 5 questions in the first pass.
+**Treat consistent feedback memory as input that's already approved.** If feedback memory says "don't add error handling for impossible cases," that becomes an `Always flag` rule directly — encoded into `.margins.md` without asking. The user already gave that feedback once; the whole point of memory is that they shouldn't have to give it again.
 
-### 4. Draft the file
+System-prompt-level conventions (no speculative abstractions, no comments that just restate code, no defensive validation at internal boundaries, no half-finished implementations, etc.) are similarly automatic inputs — encode them as rules without asking.
 
-Use this structure unless the user prefers otherwise:
+**Test/script/build directories** become `Allow without flagging` (for relaxed rules like `any`-in-tests) and/or `Ignore entirely` (for build outputs and vendored deps).
+
+If a signal is ambiguous, omit it rather than ask. The user can edit the file afterwards.
+
+### 4. Choose the structure
+
+Use this structure unless the existing `.margins.md` already uses a different one:
 
 ```
 # Margins rules — <repo name>
@@ -74,11 +82,17 @@ Use this structure unless the user prefers otherwise:
 - <anything that affects what counts as "correct" here>
 ```
 
-Show the draft inline before writing. Iterate on user feedback.
+### 5. Write the file directly, then report
 
-### 5. Write the file
+Write `.margins.md` to repo root without asking for approval. If the action is configured with a non-default `rules-file` input, use that path instead.
 
-After approval, write to `<repo-root>/.margins.md`. If the action is configured with a non-default `rules-file` input, use that path instead.
+After writing, report a summary to the user. The summary lists:
+- Which files were read (e.g. `package.json`, `CLAUDE.md`, `tsconfig.json`)
+- Which memory entries were applied (by name + one-line rationale per entry)
+- Which sections were written into the file
+- Any signals you noticed but deliberately omitted (ambiguous ones the user might want to add by hand)
+
+The user reviews the written file and edits directly if anything is off. Do not ask "is this OK?" — the report is the gate, the file is the artifact.
 
 ### 6. Offer to install the workflow
 
