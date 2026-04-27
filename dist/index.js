@@ -68638,6 +68638,22 @@ async function fetchRulesFile(params) {
   const file2 = data;
   return Buffer.from(file2.content, "base64").toString("utf-8");
 }
+async function fetchPreviousFindings(params) {
+  const octokit = new Octokit2({ auth: params.token });
+  const botUser = params.botUser ?? "github-actions[bot]";
+  const response = await octokit.pulls.listReviewComments({
+    owner: params.owner,
+    repo: params.repo,
+    pull_number: params.pullNumber,
+    per_page: 100
+  });
+  const comments = response.data;
+  return comments.filter((c) => c.user?.login === botUser).map((c) => ({
+    path: c.path,
+    line: c.line ?? c.original_line ?? 0,
+    body: c.body
+  }));
+}
 var SEVERITY_EMOJI = {
   info: "\u2139\uFE0F",
   warning: "\u26A0\uFE0F",
@@ -88795,11 +88811,17 @@ ${tail}`;
 ${tail}`;
 }
 function buildUserMessage(params) {
+  const previousBlock = params.previousFindings && params.previousFindings.length > 0 ? `
+
+Previous Margins findings already posted on this PR (do not re-flag these unless the code at those locations has materially changed since they were posted; focus on issues NOT in this list):
+<previous_findings>
+${params.previousFindings.map((f) => `- ${f.path}:${f.line} \u2014 ${f.body.replace(/\s+/g, " ").slice(0, 200)}`).join("\n")}
+</previous_findings>` : "";
   return `Pull request title:
 <pr_title>${params.prTitle}</pr_title>
 
 Pull request description:
-<pr_body>${params.prBody}</pr_body>
+<pr_body>${params.prBody}</pr_body>${previousBlock}
 
 Diff to review:
 <diff>
@@ -88958,6 +88980,24 @@ async function run() {
         `Failed to fetch ${config2.rulesFile}: ${err instanceof Error ? err.message : String(err)}. Using default rules.`
       );
     }
+    let previousFindings = [];
+    try {
+      previousFindings = await fetchPreviousFindings({
+        token: config2.githubToken,
+        owner,
+        repo,
+        pullNumber
+      });
+      if (previousFindings.length > 0) {
+        info(
+          `Found ${previousFindings.length} previous Margins findings; passing as context to suppress re-litigation.`
+        );
+      }
+    } catch (err) {
+      warning(
+        `Failed to fetch previous findings: ${err instanceof Error ? err.message : String(err)}. Proceeding without them.`
+      );
+    }
     const findings = await callReview({
       apiKey: config2.anthropicApiKey,
       model: config2.model,
@@ -88966,7 +89006,8 @@ async function run() {
       userMessage: buildUserMessage({
         diff: cappedDiff,
         prTitle,
-        prBody
+        prBody,
+        previousFindings
       })
     });
     info(`Anthropic returned ${findings.length} raw findings`);

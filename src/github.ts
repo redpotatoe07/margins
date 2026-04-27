@@ -60,6 +60,47 @@ export async function fetchRulesFile(
   return Buffer.from(file.content, 'base64').toString('utf-8');
 }
 
+export interface FetchPreviousFindingsParams {
+  token: string;
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  botUser?: string;
+}
+
+export interface PreviousFinding {
+  path: string;
+  line: number;
+  body: string;
+}
+
+export async function fetchPreviousFindings(
+  params: FetchPreviousFindingsParams
+): Promise<PreviousFinding[]> {
+  const octokit = new Octokit({ auth: params.token });
+  const botUser = params.botUser ?? 'github-actions[bot]';
+  const response = await octokit.pulls.listReviewComments({
+    owner: params.owner,
+    repo: params.repo,
+    pull_number: params.pullNumber,
+    per_page: 100,
+  });
+  const comments = response.data as Array<{
+    user: { login: string } | null;
+    path: string;
+    line: number | null;
+    original_line?: number | null;
+    body: string;
+  }>;
+  return comments
+    .filter((c) => c.user?.login === botUser)
+    .map((c) => ({
+      path: c.path,
+      line: c.line ?? c.original_line ?? 0,
+      body: c.body,
+    }));
+}
+
 export interface PostFindingsParams {
   token: string;
   owner: string;

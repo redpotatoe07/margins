@@ -3,7 +3,7 @@ import * as github from '@actions/github';
 import * as cache from '@actions/cache';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { parseConfig } from './config';
-import { fetchPRDiff, postFindings, fetchRulesFile } from './github';
+import { fetchPRDiff, postFindings, fetchRulesFile, fetchPreviousFindings } from './github';
 import { callReview } from './anthropic';
 import { buildSystemPrompt, buildUserMessage } from './prompt';
 import { filterByConfidence } from './filter';
@@ -127,6 +127,25 @@ async function run(): Promise<void> {
       );
     }
 
+    let previousFindings: Array<{ path: string; line: number; body: string }> = [];
+    try {
+      previousFindings = await fetchPreviousFindings({
+        token: config.githubToken,
+        owner,
+        repo,
+        pullNumber,
+      });
+      if (previousFindings.length > 0) {
+        core.info(
+          `Found ${previousFindings.length} previous Margins findings; passing as context to suppress re-litigation.`
+        );
+      }
+    } catch (err) {
+      core.warning(
+        `Failed to fetch previous findings: ${err instanceof Error ? err.message : String(err)}. Proceeding without them.`
+      );
+    }
+
     const findings = await callReview({
       apiKey: config.anthropicApiKey,
       model: config.model,
@@ -136,6 +155,7 @@ async function run(): Promise<void> {
         diff: cappedDiff,
         prTitle,
         prBody,
+        previousFindings,
       }),
     });
 

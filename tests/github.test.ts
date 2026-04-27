@@ -1,11 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchPRDiff, postFindings, fetchRulesFile } from '../src/github';
+import { fetchPRDiff, postFindings, fetchRulesFile, fetchPreviousFindings } from '../src/github';
 
 const mockOctokit = {
   pulls: {
     get: vi.fn(),
     createReview: vi.fn(),
     createReviewComment: vi.fn(),
+    listReviewComments: vi.fn(),
   },
   repos: {
     getContent: vi.fn(),
@@ -230,6 +231,46 @@ describe('fetchRulesFile', () => {
     });
 
     expect(result).toBeNull();
+  });
+
+  it('returns empty list when no previous bot findings exist', async () => {
+    mockOctokit.pulls.listReviewComments.mockResolvedValueOnce({
+      data: [
+        { user: { login: 'someone' }, path: 'a.ts', line: 1, body: 'human comment' },
+      ],
+    });
+    const result = await fetchPreviousFindings({
+      token: 't', owner: 'o', repo: 'r', pullNumber: 1,
+    });
+    expect(result).toEqual([]);
+  });
+
+  it('returns previous bot findings filtered by login', async () => {
+    mockOctokit.pulls.listReviewComments.mockResolvedValueOnce({
+      data: [
+        { user: { login: 'github-actions[bot]' }, path: 'a.ts', line: 5, body: 'finding A' },
+        { user: { login: 'human' }, path: 'b.ts', line: 10, body: 'human comment' },
+        { user: { login: 'github-actions[bot]' }, path: 'c.ts', line: 7, body: 'finding B' },
+      ],
+    });
+    const result = await fetchPreviousFindings({
+      token: 't', owner: 'o', repo: 'r', pullNumber: 1,
+    });
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({ path: 'a.ts', line: 5, body: 'finding A' });
+    expect(result[1]).toMatchObject({ path: 'c.ts', line: 7, body: 'finding B' });
+  });
+
+  it('falls back to original_line when line is null', async () => {
+    mockOctokit.pulls.listReviewComments.mockResolvedValueOnce({
+      data: [
+        { user: { login: 'github-actions[bot]' }, path: 'a.ts', line: null, original_line: 12, body: 'x' },
+      ],
+    });
+    const result = await fetchPreviousFindings({
+      token: 't', owner: 'o', repo: 'r', pullNumber: 1,
+    });
+    expect(result[0].line).toBe(12);
   });
 
   it('throws on non-404 errors so callers can warn and degrade', async () => {

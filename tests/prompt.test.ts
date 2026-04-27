@@ -87,4 +87,37 @@ describe('buildUserMessage', () => {
     });
     expect(msg).toMatch(/<diff>[\s\S]*<\/diff>/);
   });
+
+  it('omits previous-findings block when none provided', () => {
+    const msg = buildUserMessage({ diff: 'foo', prTitle: 't', prBody: 'b' });
+    expect(msg).not.toContain('PREVIOUS');
+    expect(msg).not.toContain('<previous_findings>');
+  });
+
+  it('includes a previous-findings block when provided', () => {
+    const msg = buildUserMessage({
+      diff: 'foo',
+      prTitle: 't',
+      prBody: 'b',
+      previousFindings: [
+        { path: 'src/a.ts', line: 5, body: 'race condition risk' },
+        { path: 'src/b.ts', line: 10, body: 'missing null check' },
+      ],
+    });
+    expect(msg).toContain('<previous_findings>');
+    expect(msg).toContain('src/a.ts:5');
+    expect(msg).toContain('race condition risk');
+    expect(msg).toContain('src/b.ts:10');
+    expect(msg).toMatch(/do not re-flag|already flagged/i);
+  });
+
+  it('omits previous-findings block when array is empty', () => {
+    const msg = buildUserMessage({
+      diff: 'foo',
+      prTitle: 't',
+      prBody: 'b',
+      previousFindings: [],
+    });
+    expect(msg).not.toContain('<previous_findings>');
+  });
 });

@@ -2,6 +2,7 @@ export interface UserMessageParams {
   diff: string;
   prTitle: string;
   prBody: string;
+  previousFindings?: Array<{ path: string; line: number; body: string }>;
 }
 
 export interface SystemPromptParams {
@@ -49,11 +50,21 @@ ${tail}`;
 }
 
 export function buildUserMessage(params: UserMessageParams): string {
+  const previousBlock =
+    params.previousFindings && params.previousFindings.length > 0
+      ? `
+
+Previous Margins findings already posted on this PR (do not re-flag these unless the code at those locations has materially changed since they were posted; focus on issues NOT in this list):
+<previous_findings>
+${params.previousFindings.map((f) => `- ${f.path}:${f.line} — ${f.body.replace(/\s+/g, ' ').slice(0, 200)}`).join('\n')}
+</previous_findings>`
+      : '';
+
   return `Pull request title:
 <pr_title>${params.prTitle}</pr_title>
 
 Pull request description:
-<pr_body>${params.prBody}</pr_body>
+<pr_body>${params.prBody}</pr_body>${previousBlock}
 
 Diff to review:
 <diff>
