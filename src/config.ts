@@ -6,6 +6,7 @@ export interface RawInputs {
   confidenceThreshold?: string | number;
   allowedAuthors?: string;
   monthlyQuota?: string | number;
+  rulesFile?: string;
 }
 
 export interface MarginsConfig {
@@ -16,6 +17,7 @@ export interface MarginsConfig {
   confidenceThreshold: number;
   allowedAuthors: string[];
   monthlyQuota: number;
+  rulesFile: string;
 }
 
 function asNumber(v: string | number | undefined, fallback: number): number {
@@ -36,5 +38,8 @@ export function parseConfig(inputs: RawInputs): MarginsConfig {
       .map((s) => s.trim())
       .filter(Boolean),
     monthlyQuota: asNumber(inputs.monthlyQuota, 500),
+    rulesFile: inputs.rulesFile && inputs.rulesFile.trim() !== ''
+      ? inputs.rulesFile
+      : '.margins.md',
   };
 }

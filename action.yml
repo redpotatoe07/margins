@@ -30,6 +30,10 @@ inputs:
     description: 'Maximum reviews per repo per calendar month'
     required: false
     default: '500'
+  rules-file:
+    description: 'Path (from repo root) to a markdown file of repo-specific review rules. Appended to the system prompt when present. Missing file is silently ignored.'
+    required: false
+    default: '.margins.md'
 
 runs:
   using: 'node20'

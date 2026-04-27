@@ -20,6 +20,45 @@ export async function fetchPRDiff(params: FetchDiffParams): Promise<string> {
   return response.data as unknown as string;
 }
 
+export interface FetchRulesFileParams {
+  token: string;
+  owner: string;
+  repo: string;
+  path: string;
+  ref: string;
+}
+
+export async function fetchRulesFile(
+  params: FetchRulesFileParams
+): Promise<string | null> {
+  const octokit = new Octokit({ auth: params.token });
+  let response;
+  try {
+    response = await octokit.repos.getContent({
+      owner: params.owner,
+      repo: params.repo,
+      path: params.path,
+      ref: params.ref,
+    });
+  } catch (err) {
+    if ((err as { status?: number })?.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+  const data = response.data as unknown;
+  if (
+    !data ||
+    Array.isArray(data) ||
+    typeof data !== 'object' ||
+    (data as { type?: string }).type !== 'file'
+  ) {
+    return null;
+  }
+  const file = data as { content: string; encoding: string };
+  return Buffer.from(file.content, 'base64').toString('utf-8');
+}
+
 export interface PostFindingsParams {
   token: string;
   owner: string;

@@ -34,6 +34,34 @@ describe('buildSystemPrompt', () => {
     expect(sys.toLowerCase()).toContain('json');
     expect(sys.toLowerCase()).toMatch(/array|list/);
   });
+
+  it('omits the repo-rules block when no repoRules provided', () => {
+    const sys = buildSystemPrompt();
+    expect(sys).not.toContain('<repo_rules>');
+    expect(sys).not.toContain('REPO-SPECIFIC RULES');
+  });
+
+  it('appends the repo-rules block when repoRules provided', () => {
+    const rules = '- Flag any console.log in src/\n- Allow `any` only in tests';
+    const sys = buildSystemPrompt({ repoRules: rules });
+    expect(sys).toContain('REPO-SPECIFIC RULES');
+    expect(sys).toContain('<repo_rules>');
+    expect(sys).toContain(rules);
+    expect(sys).toContain('</repo_rules>');
+  });
+
+  it('places the repo-rules block after the existing review principles', () => {
+    const sys = buildSystemPrompt({ repoRules: 'foo-rule' });
+    const principlesIdx = sys.indexOf('REVIEW PRINCIPLES');
+    const rulesIdx = sys.indexOf('<repo_rules>');
+    expect(principlesIdx).toBeGreaterThan(-1);
+    expect(rulesIdx).toBeGreaterThan(principlesIdx);
+  });
+
+  it('does not add the repo-rules block when repoRules is an empty string', () => {
+    const sys = buildSystemPrompt({ repoRules: '' });
+    expect(sys).not.toContain('<repo_rules>');
+  });
 });
 
 describe('buildUserMessage', () => {

@@ -44,6 +44,41 @@ jobs:
 | `confidence-threshold` | no | `0.7` | Minimum confidence (0-1) for posting findings |
 | `allowed-authors` | no | `''` (empty = allow all) | Comma-separated GitHub usernames |
 | `monthly-quota` | no | `500` | Maximum reviews per repo per calendar month |
+| `rules-file` | no | `.margins.md` | Path (from repo root) to a markdown file of repo-specific review rules. Missing file is silently ignored. |
+
+## Per-Repo Rules (`.margins.md`)
+
+To make Margins review your repo with project-specific knowledge, drop a markdown file at the repo root named `.margins.md`. Margins fetches it via the GitHub Contents API at the PR's head SHA on every run and appends its contents to the system prompt.
+
+No checkout step is required — Margins fetches the file directly. If the file is absent, Margins falls back to its generic prompt and logs an info message.
+
+Format: free-form markdown. Write the rules as you'd explain them to a new reviewer. Example:
+
+```markdown
+# Margins rules — openloop-app
+
+## Stack
+- React Native + TypeScript mobile app, Expo SDK 51.
+- Server is Node 20 + Fastify under `server/`. Mobile app under `app/`.
+
+## Always flag
+- Hardcoded user-facing strings — they must go through `i18n.t(...)`.
+- `console.log` in `app/src/` (allowed in `__tests__/` and `scripts/`).
+- `useState` for state with more than 3 fields — prefer `useReducer`.
+- Any direct `fetch()` call — must go through `app/src/api/client.ts`.
+
+## Allow without flagging
+- `any` in test files (`*.test.ts`, `*.spec.ts`, `__tests__/`).
+- Comments referencing TODO without an issue link.
+
+## Ignore entirely
+- Files under `app/scripts/` (one-off ops scripts, not shipped).
+- The `dist/` and `build/` directories.
+```
+
+The file is treated as data, not instructions — Margins won't let `.margins.md` override its core review principles, only extend them.
+
+To use a different path, set the `rules-file` input on the workflow.
 
 ## Cost Controls
 

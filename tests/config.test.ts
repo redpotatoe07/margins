@@ -44,4 +44,21 @@ describe('parseConfig', () => {
     expect(cfg.confidenceThreshold).toBe(0.8);
     expect(cfg.monthlyQuota).toBe(200);
   });
+
+  it('defaults rulesFile to .margins.md', () => {
+    const cfg = parseConfig({
+      anthropicApiKey: 'sk-test',
+      githubToken: 'gh-test',
+    });
+    expect(cfg.rulesFile).toBe('.margins.md');
+  });
+
+  it('respects override of rulesFile', () => {
+    const cfg = parseConfig({
+      anthropicApiKey: 'sk-test',
+      githubToken: 'gh-test',
+      rulesFile: '.github/margins-rules.md',
+    });
+    expect(cfg.rulesFile).toBe('.github/margins-rules.md');
+  });
 });

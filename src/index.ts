@@ -3,7 +3,7 @@ import * as github from '@actions/github';
 import * as cache from '@actions/cache';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { parseConfig } from './config';
-import { fetchPRDiff, postFindings } from './github';
+import { fetchPRDiff, postFindings, fetchRulesFile } from './github';
 import { callReview } from './anthropic';
 import { buildSystemPrompt, buildUserMessage } from './prompt';
 import { filterByConfidence } from './filter';
@@ -44,6 +44,7 @@ async function run(): Promise<void> {
       confidenceThreshold: core.getInput('confidence-threshold'),
       allowedAuthors: core.getInput('allowed-authors'),
       monthlyQuota: core.getInput('monthly-quota'),
+      rulesFile: core.getInput('rules-file'),
     });
 
     const ctx = github.context;
@@ -103,11 +104,34 @@ async function run(): Promise<void> {
       core.warning(`Diff truncated to fit input cap.`);
     }
 
+    let repoRules: string | undefined;
+    try {
+      const fetched = await fetchRulesFile({
+        token: config.githubToken,
+        owner,
+        repo,
+        path: config.rulesFile,
+        ref: commitSha,
+      });
+      if (fetched) {
+        repoRules = fetched;
+        core.info(
+          `Using ${config.rulesFile} from ${commitSha.slice(0, 7)} (${fetched.length} chars)`
+        );
+      } else {
+        core.info(`No ${config.rulesFile} found; using default rules.`);
+      }
+    } catch (err) {
+      core.warning(
+        `Failed to fetch ${config.rulesFile}: ${err instanceof Error ? err.message : String(err)}. Using default rules.`
+      );
+    }
+
     const findings = await callReview({
       apiKey: config.anthropicApiKey,
       model: config.model,
       maxTokens: config.maxTokensPerPr,
-      systemPrompt: buildSystemPrompt(),
+      systemPrompt: buildSystemPrompt({ repoRules }),
       userMessage: buildUserMessage({
         diff: cappedDiff,
         prTitle,
