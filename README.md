@@ -108,6 +108,21 @@ Every finding posted as an inline review comment uses the Greptile-compatible sc
 }
 ```
 
+## Onboarding skill (Claude Code)
+
+A companion Claude Code skill ships in this repo at `.claude/skills/margins-rules/SKILL.md`. It walks you through generating a tailored `.margins.md` for any repo — inspects the codebase, asks a few targeted questions, drafts the file, offers to install the workflow, and verifies the GitHub secret.
+
+Install once on your machine:
+
+```bash
+mkdir -p ~/.claude/skills/margins-rules && \
+  gh api -H "Accept: application/vnd.github.v3.raw" \
+  repos/redpotatoe07/margins/contents/.claude/skills/margins-rules/SKILL.md \
+  > ~/.claude/skills/margins-rules/SKILL.md
+```
+
+After that, in any Claude Code session, ask "set up Margins on this repo" or "create .margins.md" and the skill activates. Re-run the install command to update when a new version ships.
+
 ## Local Development
 
 ```bash
