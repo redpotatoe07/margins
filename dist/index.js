@@ -88686,7 +88686,7 @@ var findingSchema = external_exports.object({
   category: external_exports.enum(["correctness", "security", "performance", "style", "docs"]),
   message: external_exports.string().min(1),
   confidence: external_exports.number().min(0).max(1),
-  suggested_fix: external_exports.string().optional()
+  suggested_fix: external_exports.string().nullable().optional()
 });
 var findingsArraySchema = external_exports.array(findingSchema);
 
@@ -88702,7 +88702,9 @@ async function callReview(params) {
       messages: [{ role: "user", content: params.userMessage }]
     });
   } catch (err) {
-    console.error("Anthropic API call failed:", err);
+    warning(
+      `Anthropic API call failed: ${err instanceof Error ? err.message : String(err)}`
+    );
     return [];
   }
   const text = response.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
@@ -88711,14 +88713,13 @@ async function callReview(params) {
   try {
     parsed = JSON.parse(stripped);
   } catch {
-    console.warn("Anthropic response was not valid JSON; discarding.");
+    warning("Anthropic response was not valid JSON; discarding.");
     return [];
   }
   const validation = findingsArraySchema.safeParse(parsed);
   if (!validation.success) {
-    console.warn(
-      "Anthropic response failed schema validation:",
-      validation.error.message
+    warning(
+      `Anthropic response failed schema validation: ${validation.error.message}`
     );
     return [];
   }

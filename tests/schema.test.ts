@@ -27,6 +27,19 @@ describe('findingSchema', () => {
     expect(() => findingSchema.parse(valid)).not.toThrow();
   });
 
+  it('accepts a finding with suggested_fix: null (model omits via null)', () => {
+    const valid = {
+      file_path: 'src/foo.ts',
+      line: 42,
+      severity: 'warning',
+      category: 'correctness',
+      message: 'x',
+      confidence: 0.8,
+      suggested_fix: null,
+    };
+    expect(() => findingSchema.parse(valid)).not.toThrow();
+  });
+
   it('rejects invalid severity', () => {
     const invalid = {
       file_path: 'src/foo.ts',

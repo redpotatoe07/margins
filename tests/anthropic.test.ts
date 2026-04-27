@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { callReview } from '../src/anthropic';
+import * as core from '@actions/core';
 
 const mockCreate = vi.fn();
 
@@ -10,6 +11,16 @@ vi.mock('@anthropic-ai/sdk', () => ({
     };
   }),
 }));
+
+vi.mock('@actions/core', () => ({
+  warning: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe('callReview', () => {
   it('returns parsed JSON findings on a clean response', async () => {
@@ -78,6 +89,96 @@ describe('callReview', () => {
     });
 
     expect(result).toEqual([]);
+  });
+
+  it('round-trips a finding with suggested_fix: null', async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify([
+            {
+              file_path: 'src/a.ts',
+              line: 5,
+              severity: 'warning',
+              category: 'correctness',
+              message: 'x',
+              confidence: 0.8,
+              suggested_fix: null,
+            },
+          ]),
+        },
+      ],
+    });
+
+    const result = await callReview({
+      apiKey: 'sk-test',
+      model: 'claude-haiku-4-5',
+      maxTokens: 4000,
+      systemPrompt: 'sys',
+      userMessage: 'user',
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].file_path).toBe('src/a.ts');
+  });
+
+  it('surfaces schema-validation failures via core.warning, not console', async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify([{ file_path: 'x' /* missing fields */ }]),
+        },
+      ],
+    });
+
+    await callReview({
+      apiKey: 'sk-test',
+      model: 'claude-haiku-4-5',
+      maxTokens: 4000,
+      systemPrompt: 'sys',
+      userMessage: 'user',
+    });
+
+    expect(core.warning).toHaveBeenCalled();
+    const callArgs = vi.mocked(core.warning).mock.calls[0][0];
+    expect(String(callArgs)).toMatch(/schema validation/i);
+  });
+
+  it('surfaces malformed-JSON failures via core.warning, not console', async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: 'not json at all' }],
+    });
+
+    await callReview({
+      apiKey: 'sk-test',
+      model: 'claude-haiku-4-5',
+      maxTokens: 4000,
+      systemPrompt: 'sys',
+      userMessage: 'user',
+    });
+
+    expect(core.warning).toHaveBeenCalled();
+    const callArgs = vi.mocked(core.warning).mock.calls[0][0];
+    expect(String(callArgs)).toMatch(/json/i);
+  });
+
+  it('surfaces API call failures via core.warning', async () => {
+    mockCreate.mockRejectedValueOnce(new Error('network down'));
+
+    const result = await callReview({
+      apiKey: 'sk-test',
+      model: 'claude-haiku-4-5',
+      maxTokens: 4000,
+      systemPrompt: 'sys',
+      userMessage: 'user',
+    });
+
+    expect(result).toEqual([]);
+    expect(core.warning).toHaveBeenCalled();
+    const callArgs = vi.mocked(core.warning).mock.calls[0][0];
+    expect(String(callArgs)).toMatch(/anthropic|network|api/i);
   });
 
   it('extracts JSON from markdown code fences if model wraps it', async () => {

@@ -7,7 +7,7 @@ export const findingSchema = z.object({
   category: z.enum(['correctness', 'security', 'performance', 'style', 'docs']),
   message: z.string().min(1),
   confidence: z.number().min(0).max(1),
-  suggested_fix: z.string().optional(),
+  suggested_fix: z.string().nullable().optional(),
 });
 
 export const findingsArraySchema = z.array(findingSchema);

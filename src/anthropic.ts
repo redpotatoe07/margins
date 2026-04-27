@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import * as core from '@actions/core';
 import { findingsArraySchema, ValidatedFinding } from './schema';
 
 export interface CallReviewParams {
@@ -23,7 +24,9 @@ export async function callReview(
       messages: [{ role: 'user', content: params.userMessage }],
     });
   } catch (err) {
-    console.error('Anthropic API call failed:', err);
+    core.warning(
+      `Anthropic API call failed: ${err instanceof Error ? err.message : String(err)}`
+    );
     return [];
   }
 
@@ -43,15 +46,14 @@ export async function callReview(
   try {
     parsed = JSON.parse(stripped);
   } catch {
-    console.warn('Anthropic response was not valid JSON; discarding.');
+    core.warning('Anthropic response was not valid JSON; discarding.');
     return [];
   }
 
   const validation = findingsArraySchema.safeParse(parsed);
   if (!validation.success) {
-    console.warn(
-      'Anthropic response failed schema validation:',
-      validation.error.message
+    core.warning(
+      `Anthropic response failed schema validation: ${validation.error.message}`
     );
     return [];
   }
