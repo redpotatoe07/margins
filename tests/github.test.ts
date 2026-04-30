@@ -83,8 +83,9 @@ describe('postFindings', () => {
     );
   });
 
-  it('posts no review when findings array is empty', async () => {
-    mockOctokit.pulls.createReview.mockClear();
+  it('posts a "no findings" review when findings array is empty', async () => {
+    mockOctokit.pulls.createReview.mockReset();
+    mockOctokit.pulls.createReview.mockResolvedValueOnce({ data: { id: 2 } });
 
     await postFindings({
       token: 't',
@@ -95,7 +96,56 @@ describe('postFindings', () => {
       findings: [],
     });
 
-    expect(mockOctokit.pulls.createReview).not.toHaveBeenCalled();
+    expect(mockOctokit.pulls.createReview).toHaveBeenCalledTimes(1);
+    expect(mockOctokit.pulls.createReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: 'redpotatoe07',
+        repo: 'openloop-app',
+        pull_number: 42,
+        commit_id: 'abc123',
+        event: 'COMMENT',
+        body: expect.stringContaining('no findings'),
+      })
+    );
+  });
+
+  it('appends a truncation note to the no-findings review when diffTruncated is true', async () => {
+    mockOctokit.pulls.createReview.mockReset();
+    mockOctokit.pulls.createReview.mockResolvedValueOnce({ data: { id: 3 } });
+
+    await postFindings({
+      token: 't',
+      owner: 'redpotatoe07',
+      repo: 'openloop-app',
+      pullNumber: 42,
+      commitSha: 'abc123',
+      findings: [],
+      diffTruncated: true,
+    });
+
+    const call = mockOctokit.pulls.createReview.mock.calls[0][0];
+    expect(call.body).toContain('no findings');
+    expect(call.body).toContain('truncated');
+  });
+
+  it('reports raw findings dropped below threshold in the no-findings review', async () => {
+    mockOctokit.pulls.createReview.mockReset();
+    mockOctokit.pulls.createReview.mockResolvedValueOnce({ data: { id: 4 } });
+
+    await postFindings({
+      token: 't',
+      owner: 'redpotatoe07',
+      repo: 'openloop-app',
+      pullNumber: 42,
+      commitSha: 'abc123',
+      findings: [],
+      rawFindingsCount: 3,
+      confidenceThreshold: 0.7,
+    });
+
+    const call = mockOctokit.pulls.createReview.mock.calls[0][0];
+    expect(call.body).toContain('3 raw findings');
+    expect(call.body).toContain('0.7');
   });
 
   it('falls back to per-comment posting when createReview fails (e.g. invalid line on one comment)', async () => {

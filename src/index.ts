@@ -171,6 +171,9 @@ async function run(): Promise<void> {
       pullNumber,
       commitSha,
       findings: highConfidence,
+      diffTruncated: cappedDiff !== diff,
+      rawFindingsCount: findings.length,
+      confidenceThreshold: config.confidenceThreshold,
     });
 
     core.setOutput('findings-count', String(highConfidence.length));

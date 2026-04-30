@@ -68661,11 +68661,33 @@ var SEVERITY_EMOJI = {
   critical: "\u{1F6A8}"
 };
 async function postFindings(params) {
+  const octokit = new Octokit2({ auth: params.token });
   if (params.findings.length === 0) {
-    info("No findings to post.");
+    const lines = ["Margins reviewed this PR \u2014 no findings."];
+    if (params.diffTruncated) {
+      lines.push(
+        "",
+        "_Note: the diff exceeded the input cap and was truncated; not the entire diff was reviewed._"
+      );
+    }
+    if (params.rawFindingsCount !== void 0 && params.rawFindingsCount > 0 && params.confidenceThreshold !== void 0) {
+      const n = params.rawFindingsCount;
+      lines.push(
+        "",
+        `_(${n} raw finding${n === 1 ? "" : "s"} dropped below the ${params.confidenceThreshold} confidence threshold.)_`
+      );
+    }
+    await octokit.pulls.createReview({
+      owner: params.owner,
+      repo: params.repo,
+      pull_number: params.pullNumber,
+      commit_id: params.commitSha,
+      event: "COMMENT",
+      body: lines.join("\n")
+    });
+    info("Posted no-findings review.");
     return;
   }
-  const octokit = new Octokit2({ auth: params.token });
   const comments = params.findings.map((f) => {
     const emoji3 = SEVERITY_EMOJI[f.severity];
     let body2 = `${emoji3} **[${f.severity}/${f.category}]** ${f.message}`;
@@ -89019,7 +89041,10 @@ async function run() {
       repo,
       pullNumber,
       commitSha,
-      findings: highConfidence
+      findings: highConfidence,
+      diffTruncated: cappedDiff !== diff,
+      rawFindingsCount: findings.length,
+      confidenceThreshold: config2.confidenceThreshold
     });
     setOutput("findings-count", String(highConfidence.length));
   } catch (err) {
