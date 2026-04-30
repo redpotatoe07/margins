@@ -101,6 +101,34 @@ export async function fetchPreviousFindings(
     }));
 }
 
+export interface CountPreviousReviewsParams {
+  token: string;
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  botUser?: string;
+}
+
+export async function countPreviousMarginsReviews(
+  params: CountPreviousReviewsParams
+): Promise<number> {
+  const octokit = new Octokit({ auth: params.token });
+  const botUser = params.botUser ?? 'github-actions[bot]';
+  const response = await octokit.pulls.listReviews({
+    owner: params.owner,
+    repo: params.repo,
+    pull_number: params.pullNumber,
+    per_page: 100,
+  });
+  const reviews = response.data as Array<{
+    user: { login: string } | null;
+    body: string | null;
+  }>;
+  return reviews.filter(
+    (r) => r.user?.login === botUser && (r.body ?? '').startsWith('Margins reviewed this PR')
+  ).length;
+}
+
 export interface PostFindingsParams {
   token: string;
   owner: string;
@@ -111,6 +139,7 @@ export interface PostFindingsParams {
   diffTruncated?: boolean;
   rawFindingsCount?: number;
   confidenceThreshold?: number;
+  runNumber?: number;
 }
 
 const SEVERITY_EMOJI: Record<ValidatedFinding['severity'], string> = {
@@ -122,9 +151,11 @@ const SEVERITY_EMOJI: Record<ValidatedFinding['severity'], string> = {
 
 export async function postFindings(params: PostFindingsParams): Promise<void> {
   const octokit = new Octokit({ auth: params.token });
+  const runTag =
+    params.runNumber !== undefined ? ` (run #${params.runNumber})` : '';
 
   if (params.findings.length === 0) {
-    const lines = ['Margins reviewed this PR — no findings.'];
+    const lines = [`Margins reviewed this PR${runTag} — no findings.`];
     if (params.diffTruncated) {
       lines.push(
         '',
@@ -174,7 +205,7 @@ export async function postFindings(params: PostFindingsParams): Promise<void> {
       pull_number: params.pullNumber,
       commit_id: params.commitSha,
       event: 'COMMENT',
-      body: `Margins reviewed this PR and found ${params.findings.length} item${params.findings.length === 1 ? '' : 's'}.`,
+      body: `Margins reviewed this PR${runTag} and found ${params.findings.length} item${params.findings.length === 1 ? '' : 's'}.`,
       comments,
     });
     return;

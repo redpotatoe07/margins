@@ -68654,6 +68654,20 @@ async function fetchPreviousFindings(params) {
     body: c.body
   }));
 }
+async function countPreviousMarginsReviews(params) {
+  const octokit = new Octokit2({ auth: params.token });
+  const botUser = params.botUser ?? "github-actions[bot]";
+  const response = await octokit.pulls.listReviews({
+    owner: params.owner,
+    repo: params.repo,
+    pull_number: params.pullNumber,
+    per_page: 100
+  });
+  const reviews = response.data;
+  return reviews.filter(
+    (r) => r.user?.login === botUser && (r.body ?? "").startsWith("Margins reviewed this PR")
+  ).length;
+}
 var SEVERITY_EMOJI = {
   info: "\u2139\uFE0F",
   warning: "\u26A0\uFE0F",
@@ -68662,8 +68676,9 @@ var SEVERITY_EMOJI = {
 };
 async function postFindings(params) {
   const octokit = new Octokit2({ auth: params.token });
+  const runTag = params.runNumber !== void 0 ? ` (run #${params.runNumber})` : "";
   if (params.findings.length === 0) {
-    const lines = ["Margins reviewed this PR \u2014 no findings."];
+    const lines = [`Margins reviewed this PR${runTag} \u2014 no findings.`];
     if (params.diffTruncated) {
       lines.push(
         "",
@@ -68711,7 +68726,7 @@ ${f.suggested_fix}
       pull_number: params.pullNumber,
       commit_id: params.commitSha,
       event: "COMMENT",
-      body: `Margins reviewed this PR and found ${params.findings.length} item${params.findings.length === 1 ? "" : "s"}.`,
+      body: `Margins reviewed this PR${runTag} and found ${params.findings.length} item${params.findings.length === 1 ? "" : "s"}.`,
       comments
     });
     return;
@@ -89035,6 +89050,20 @@ async function run() {
     info(`Anthropic returned ${findings.length} raw findings`);
     const highConfidence = filterByConfidence(findings, config2.confidenceThreshold);
     info(`After confidence filter (\u2265${config2.confidenceThreshold}): ${highConfidence.length} findings`);
+    let runNumber;
+    try {
+      const previousCount = await countPreviousMarginsReviews({
+        token: config2.githubToken,
+        owner,
+        repo,
+        pullNumber
+      });
+      runNumber = previousCount + 1;
+    } catch (err) {
+      warning(
+        `Failed to count previous Margins reviews: ${err instanceof Error ? err.message : String(err)}. Posting without a run number.`
+      );
+    }
     await postFindings({
       token: config2.githubToken,
       owner,
@@ -89044,7 +89073,8 @@ async function run() {
       findings: highConfidence,
       diffTruncated: cappedDiff !== diff,
       rawFindingsCount: findings.length,
-      confidenceThreshold: config2.confidenceThreshold
+      confidenceThreshold: config2.confidenceThreshold,
+      runNumber
     });
     setOutput("findings-count", String(highConfidence.length));
   } catch (err) {

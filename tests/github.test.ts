@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchPRDiff, postFindings, fetchRulesFile, fetchPreviousFindings } from '../src/github';
+import { fetchPRDiff, postFindings, fetchRulesFile, fetchPreviousFindings, countPreviousMarginsReviews } from '../src/github';
 
 const mockOctokit = {
   pulls: {
@@ -7,6 +7,7 @@ const mockOctokit = {
     createReview: vi.fn(),
     createReviewComment: vi.fn(),
     listReviewComments: vi.fn(),
+    listReviews: vi.fn(),
   },
   repos: {
     getContent: vi.fn(),
@@ -41,6 +42,42 @@ describe('fetchPRDiff', () => {
         mediaType: { format: 'diff' },
       })
     );
+  });
+});
+
+describe('countPreviousMarginsReviews', () => {
+  it('counts only reviews from the bot user with the Margins prefix', async () => {
+    mockOctokit.pulls.listReviews.mockResolvedValueOnce({
+      data: [
+        { user: { login: 'github-actions[bot]' }, body: 'Margins reviewed this PR (run #1) — no findings.' },
+        { user: { login: 'github-actions[bot]' }, body: 'Margins reviewed this PR and found 8 items.' },
+        { user: { login: 'github-actions[bot]' }, body: 'Some unrelated bot comment.' },
+        { user: { login: 'redpotatoe07' }, body: 'Margins reviewed this PR — manual mention.' },
+        { user: { login: 'github-actions[bot]' }, body: null },
+      ],
+    });
+
+    const count = await countPreviousMarginsReviews({
+      token: 't',
+      owner: 'redpotatoe07',
+      repo: 'openloop-app',
+      pullNumber: 42,
+    });
+
+    expect(count).toBe(2);
+  });
+
+  it('returns 0 when there are no reviews', async () => {
+    mockOctokit.pulls.listReviews.mockResolvedValueOnce({ data: [] });
+
+    const count = await countPreviousMarginsReviews({
+      token: 't',
+      owner: 'redpotatoe07',
+      repo: 'openloop-app',
+      pullNumber: 42,
+    });
+
+    expect(count).toBe(0);
   });
 });
 
@@ -126,6 +163,54 @@ describe('postFindings', () => {
     const call = mockOctokit.pulls.createReview.mock.calls[0][0];
     expect(call.body).toContain('no findings');
     expect(call.body).toContain('truncated');
+  });
+
+  it('includes the run number in the no-findings review body', async () => {
+    mockOctokit.pulls.createReview.mockReset();
+    mockOctokit.pulls.createReview.mockResolvedValueOnce({ data: { id: 7 } });
+
+    await postFindings({
+      token: 't',
+      owner: 'redpotatoe07',
+      repo: 'openloop-app',
+      pullNumber: 42,
+      commitSha: 'abc123',
+      findings: [],
+      runNumber: 3,
+    });
+
+    const call = mockOctokit.pulls.createReview.mock.calls[0][0];
+    expect(call.body).toContain('(run #3)');
+    expect(call.body).toContain('no findings');
+  });
+
+  it('includes the run number in the with-findings review body', async () => {
+    mockOctokit.pulls.createReview.mockReset();
+    mockOctokit.pulls.createReview.mockResolvedValueOnce({ data: { id: 8 } });
+
+    await postFindings({
+      token: 't',
+      owner: 'redpotatoe07',
+      repo: 'openloop-app',
+      pullNumber: 42,
+      commitSha: 'abc123',
+      runNumber: 5,
+      findings: [
+        {
+          file_path: 'src/a.ts',
+          line: 5,
+          severity: 'warning',
+          category: 'correctness',
+          message: 'X',
+          confidence: 0.9,
+          suggested_fix: null,
+        },
+      ],
+    });
+
+    const call = mockOctokit.pulls.createReview.mock.calls[0][0];
+    expect(call.body).toContain('(run #5)');
+    expect(call.body).toContain('found 1 item');
   });
 
   it('reports raw findings dropped below threshold in the no-findings review', async () => {

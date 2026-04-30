@@ -3,7 +3,7 @@ import * as github from '@actions/github';
 import * as cache from '@actions/cache';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { parseConfig } from './config';
-import { fetchPRDiff, postFindings, fetchRulesFile, fetchPreviousFindings } from './github';
+import { fetchPRDiff, postFindings, fetchRulesFile, fetchPreviousFindings, countPreviousMarginsReviews } from './github';
 import { callReview } from './anthropic';
 import { buildSystemPrompt, buildUserMessage } from './prompt';
 import { filterByConfidence } from './filter';
@@ -164,6 +164,21 @@ async function run(): Promise<void> {
     const highConfidence = filterByConfidence(findings, config.confidenceThreshold);
     core.info(`After confidence filter (≥${config.confidenceThreshold}): ${highConfidence.length} findings`);
 
+    let runNumber: number | undefined;
+    try {
+      const previousCount = await countPreviousMarginsReviews({
+        token: config.githubToken,
+        owner,
+        repo,
+        pullNumber,
+      });
+      runNumber = previousCount + 1;
+    } catch (err) {
+      core.warning(
+        `Failed to count previous Margins reviews: ${err instanceof Error ? err.message : String(err)}. Posting without a run number.`
+      );
+    }
+
     await postFindings({
       token: config.githubToken,
       owner,
@@ -174,6 +189,7 @@ async function run(): Promise<void> {
       diffTruncated: cappedDiff !== diff,
       rawFindingsCount: findings.length,
       confidenceThreshold: config.confidenceThreshold,
+      runNumber,
     });
 
     core.setOutput('findings-count', String(highConfidence.length));
